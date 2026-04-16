@@ -1,0 +1,13 @@
+date,description,amount,type,category
+2026-04-01,Salary,50000,income,salary
+2026-04-02,Swiggy Order,350,expense,food
+2026-04-03,Uber Ride,220,expense,transport
+2026-04-04,Movie Ticket,500,expense,entertainment
+2026-04-05,Freelance Payment,8000,income,freelance
+2026-04-06,Groceries,1800,expense,food
+2026-04-07,Electricity Bill,2500,expense,bills
+2026-04-08,Amazon Purchase,1500,expense,shopping
+2026-04-09,Bus Pass,600,expense,transport
+2026-04-10,Cafe,450,expense,food
+2026-04-11,Internet Bill,999,expense,bills
+2026-04-12,Medicine,700,expense,health
