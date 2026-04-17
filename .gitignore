@@ -1,16 +1,7 @@
-# Python cache
 __pycache__/
 *.pyc
-
-# Environment variables (VERY IMPORTANT)
-.env
-
-# Virtual environment
-venv/
 .venv/
-
-# VS Code settings (optional)
+env/
+venv/
+.idea/
 .vscode/
-
-# OS files
-.DS_Store
