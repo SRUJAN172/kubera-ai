@@ -4,14 +4,26 @@ from typing import Any, Dict
 import requests
 
 OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "llama3"
+MODEL_NAME = "llama3.2:1b"
 
 
 def generate_explanation(prompt: str, model: str = MODEL_NAME) -> str:
     payload: Dict[str, Any] = {
         "model": model,
-        "prompt": prompt,
+        "prompt": f"""
+        You are a strict financial analyst.
+
+        Rules:
+        - Do not guess numbers
+        - Be precise
+        - Be concise
+
+        {prompt}
+        """,
         "stream": False,
+        "options": {
+            "temperature": 0.3
+        }
     }
 
     try:
@@ -28,6 +40,6 @@ def generate_explanation(prompt: str, model: str = MODEL_NAME) -> str:
     text = data.get("response", "").strip()
 
     if not text:
-        raise ValueError(f"Ollama returned an empty response: {data}")
+        return "Unable to generate explanation."
 
     return text
