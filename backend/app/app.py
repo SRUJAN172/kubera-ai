@@ -7,8 +7,6 @@ from llm_service import generate_explanation
 
 app = FastAPI()
 
-#the CORSMiddleware which helps to  link the frontend and backend , it makes the resource access possible to run b/w the local system
-#Cross-Origin Resource Sharing
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -35,7 +33,7 @@ def home():
 
 
 @app.get("/analyze")
-def analyze():
+def analyze_route():
     summary, _, _ = get_pipeline_data()
     return summary
 
@@ -73,22 +71,35 @@ def explain_route():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/ask")
-def ask(query:str):
-    data = load_transactions(CSV_PATH)
-    summary = analyze_transactions(data)
-    prompt = f"""
-    you are a finiancial assistant
+def ask(query: str):
+    try:
+        data = load_transactions(CSV_PATH)
+        summary = analyze_transactions(data)
+        insights = generate_insights(summary)
 
-    Rules:
-    -Answer clearly
-    -Use numbers when possible
-    -Be concise
+        prompt = f"""
+You are a financial assistant for Kubera AI.
 
-    Data:{data}
+Rules:
+- Answer clearly
+- Use numbers when possible
+- Be concise
+- Base your answer only on the given financial summary and insights
+- If the answer is not available from the data, say that clearly
 
-    Question:{query}
-    """
-    response = generate_explanation(prompt)
-    return {"answer":response}
+Financial Summary:
+{summary}
 
+Insights:
+{insights}
+
+User Question:
+{query}
+"""
+        response = generate_explanation(prompt)
+        return {"answer": response}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
