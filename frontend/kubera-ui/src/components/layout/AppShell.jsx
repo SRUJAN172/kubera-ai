@@ -23,8 +23,8 @@ function AppShell({ children }) {
         </div>
 
         <nav className="space-y-2">
-          <NavItem to="/" icon={MessageSquare} label="Chat" />
           <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" />
+          <NavItem to="/" icon={MessageSquare} label="Chat" />
           <NavItem to="/transactions" icon={Receipt} label="Transactions" />
           <NavItem to="/goals" icon={Target} label="Goals" />
         </nav>
