@@ -7,7 +7,7 @@ import requests
 # Groq Config
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "llama-3.1-8b-instant"
-GROQ_VISION_MODEL = "llama-3.2-11b-vision-preview"
+GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 
 # Ollama Config (Local Fallback)
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
@@ -101,17 +101,26 @@ def analyze_receipt(base64_image: str, mime_type: str) -> dict:
                     ]
                 }
             ],
-            "response_format": {"type": "json_object"},
             "temperature": 0.1
         }
         try:
             response = requests.post(GROQ_API_URL, headers=headers, json=payload, timeout=180)
-            response.raise_for_status()
+            if response.status_code != 200:
+                error_msg = response.text
+                raise RuntimeError(f"Groq API Error {response.status_code}: {error_msg}")
+            
             data = response.json()
             content = data["choices"][0]["message"]["content"].strip()
+            
+            # AI might return markdown, so we extract the JSON block
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+                
             return json.loads(content)
         except Exception as e:
-            raise RuntimeError(f"Failed to analyze receipt with Groq Vision: {e}") from e
+            raise RuntimeError(f"Failed to analyze receipt: {e}") from e
     else:
         payload = {
             "model": OLLAMA_VISION_MODEL,

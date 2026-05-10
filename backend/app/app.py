@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import pandas as pd
@@ -120,6 +121,19 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
         "token": token,
         "user": {"id": user.id, "name": user.name, "email": user.email},
     }
+
+
+@app.post("/token")
+def login_for_swagger(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    """OAuth2-compatible login for Swagger UI Authorize button.
+    Use your email as the username."""
+    user = db.query(User).filter(User.email == form_data.username).first()
+
+    if not user or not verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = create_access_token({"sub": user.email})
+    return {"access_token": token, "token_type": "bearer"}
 
 
 @app.get("/me")
