@@ -407,6 +407,14 @@ def get_subscriptions(current_user: User = Depends(get_current_user)):
             "subscriptions": subs
         }
 
+    except (ValueError, KeyError):
+        # User has no transactions yet
+        return {
+            "status": "success",
+            "total_monthly_cost": 0,
+            "subscriptions": []
+        }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
