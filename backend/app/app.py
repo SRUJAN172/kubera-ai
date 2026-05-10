@@ -393,6 +393,23 @@ def export_transactions(current_user: User = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/subscriptions")
+def get_subscriptions(current_user: User = Depends(get_current_user)):
+    try:
+        analyzer = get_cached_data(current_user.id)
+        subs = analyzer.detect_subscriptions()
+        
+        total_monthly_cost = sum(sub["amount"] for sub in subs)
+        
+        return {
+            "status": "success",
+            "total_monthly_cost": total_monthly_cost,
+            "subscriptions": subs
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ------------------ UPLOAD ------------------
 
 @app.post("/upload")
@@ -510,6 +527,56 @@ async def upload_csv(
     except Exception as e:
         db.rollback()
         print("UPLOAD ERROR:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/upload-receipt")
+async def upload_receipt(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        import base64
+        from llm_service import analyze_receipt
+        
+        if not file.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail="Only image files are allowed.")
+            
+        file_bytes = await file.read()
+        b64_image = base64.b64encode(file_bytes).decode('utf-8')
+        
+        # Call the Vision AI
+        receipt_data = analyze_receipt(b64_image, file.content_type)
+        
+        # The AI should return amount, description, date, category
+        date_str = receipt_data.get("date", str(datetime.utcnow().date()))
+        amount = float(receipt_data.get("amount", 0.0))
+        description = receipt_data.get("description", "Unknown Merchant")
+        category = receipt_data.get("category", "Others")
+        
+        transaction = Transaction(
+            user_id=current_user.id,
+            date=date_str,
+            type="expense",
+            category=category,
+            amount=amount,
+            description=description,
+        )
+        
+        db.add(transaction)
+        db.commit()
+        clear_user_cache(current_user.id)
+        
+        return {
+            "status": "success",
+            "message": "Receipt processed successfully",
+            "data": receipt_data
+        }
+        
+    except Exception as e:
+        db.rollback()
+        print("RECEIPT UPLOAD ERROR:", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

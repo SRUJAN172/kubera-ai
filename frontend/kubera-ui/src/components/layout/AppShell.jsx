@@ -9,6 +9,7 @@ import {
   MessageSquare,
   Receipt,
   Target,
+  CreditCard,
   LogOut,
 } from "lucide-react";
 import NavItem from "./NavItem";
@@ -37,6 +38,7 @@ function AppShell() {
           <NavItem to="/dashboard" icon={LayoutDashboard} label="Dashboard" />
           <NavItem to="/" icon={MessageSquare} label="Chat" />
           <NavItem to="/transactions" icon={Receipt} label="Transactions" />
+          <NavItem to="/subscriptions" icon={CreditCard} label="Subscriptions" />
           <NavItem to="/goals" icon={Target} label="Goals" />
         </nav>
 

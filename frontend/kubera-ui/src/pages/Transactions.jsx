@@ -31,6 +31,9 @@ function Transactions() {
     fetchTransactions();
   }, []);
 
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
+  const fileInputRef = React.useRef(null);
+
   const handleExport = async () => {
     try {
       const response = await apiFetch("/transactions/export");
@@ -55,6 +58,40 @@ function Transactions() {
     } catch (err) {
       console.error("Export error:", err);
       alert("Failed to export");
+    }
+  };
+
+  const handleReceiptUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingReceipt(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await apiFetch("/upload-receipt", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to upload receipt");
+      }
+
+      const result = await res.json();
+      alert(`Receipt Processed: ₹${result.data.amount} at ${result.data.description}`);
+      
+      // Refresh transactions
+      const updatedRes = await apiFetch("/transactions");
+      const updatedData = await updatedRes.json();
+      setTransactions(updatedData.data ? updatedData.data : updatedData);
+    } catch (err) {
+      console.error("Receipt upload error:", err);
+      alert("Failed to process receipt. Please try again.");
+    } finally {
+      setUploadingReceipt(false);
+      e.target.value = ""; // reset input
     }
   };
 
@@ -91,6 +128,20 @@ function Transactions() {
         </div>
 
         <div className="flex gap-4">
+          <input 
+            type="file" 
+            accept="image/*" 
+            ref={fileInputRef} 
+            onChange={handleReceiptUpload} 
+            className="hidden" 
+          />
+          <button
+            onClick={() => fileInputRef.current.click()}
+            disabled={uploadingReceipt}
+            className="flex items-center gap-3 px-6 py-4 bg-[#1A3C34] text-white rounded-2xl shadow-sm font-medium disabled:opacity-70"
+          >
+            {uploadingReceipt ? "Scanning..." : "Scan Receipt"}
+          </button>
           <button
             onClick={handleExport}
             className="flex items-center gap-3 px-6 py-4 bg-white border border-stone-200 rounded-2xl shadow-sm font-medium"

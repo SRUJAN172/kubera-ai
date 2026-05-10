@@ -14,6 +14,7 @@ import Transactions from "./pages/Transactions";
 import Goals from "./pages/Goals";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Subscriptions from "./pages/Subscriptions";
 
 function ProtectedRoute() {
   const { isAuthenticated, loading } = useAuth();
@@ -69,6 +70,7 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/transactions" element={<Transactions />} />
               <Route path="/goals" element={<Goals />} />
+              <Route path="/subscriptions" element={<Subscriptions />} />
             </Route>
           </Route>
 

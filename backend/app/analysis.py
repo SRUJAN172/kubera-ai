@@ -234,6 +234,29 @@ class FinancialAnalyzer:
             return "Average"
         return "Poor"
 
+    def detect_subscriptions(self) -> list[Dict[str, Any]]:
+        expenses = self._expense_df().copy()
+        if expenses.empty:
+            return []
+
+        expenses = expenses[expenses["description"].str.len() > 0]
+        
+        subs = []
+        for desc, group in expenses.groupby("description"):
+            if len(group) >= 2:
+                std = group["amount"].std()
+                mean = group["amount"].mean()
+                if pd.isna(std) or std < mean * 0.15:
+                    subs.append({
+                        "name": str(desc),
+                        "amount": float(mean),
+                        "count": int(len(group)),
+                        "last_date": str(group["date"].max().date()) if pd.notna(group["date"].max()) else "Unknown"
+                    })
+        
+        subs.sort(key=lambda x: x["amount"], reverse=True)
+        return subs
+
     def full_analysis(self) -> Dict[str, Any]:
         return {
             "total_transactions": self.transaction_count(),
