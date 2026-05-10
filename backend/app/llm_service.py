@@ -9,7 +9,7 @@ import requests
 
 # Groq Config
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama3-8b-8192"
+GROQ_MODEL = "llama-3.1-8b-instant"
 
 # Ollama Config (Local Fallback)
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
@@ -44,6 +44,9 @@ def generate_explanation(prompt: str) -> str:
             response.raise_for_status()
             data = response.json()
             return data["choices"][0]["message"]["content"].strip()
+        except requests.exceptions.HTTPError as e:
+            error_details = response.text
+            raise RuntimeError(f"Failed to connect to Groq API (HTTP {response.status_code}): {error_details}") from e
         except Exception as e:
             raise RuntimeError(f"Failed to connect to Groq API: {e}") from e
     else:
