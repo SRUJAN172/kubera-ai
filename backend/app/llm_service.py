@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Any, Dict
 import requests
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-MODEL_NAME = "llama3.2:1b"
+import os
+
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434/api/generate")
+MODEL_NAME = os.environ.get("OLLAMA_MODEL", "llama3.2:1b")
 
 
 def generate_explanation(prompt: str, model: str = MODEL_NAME) -> str:
