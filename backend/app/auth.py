@@ -1,8 +1,5 @@
 from datetime import datetime, timedelta
 
-# pyrefly: ignore [missing-import]
-from passlib.context import CryptContext
-# pyrefly: ignore [missing-import]
 from jose import jwt, JWTError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -16,24 +13,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
 # ---------- Config ----------
 
 SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "kubera-ai-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 10080  # 7 days
 
+import bcrypt
+
 # ---------- Password Hashing ----------
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
-
-
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
-
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
 
 def verify_password(password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(password, hashed_password)
+    return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 
 # ---------- JWT Token ----------

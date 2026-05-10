@@ -4,7 +4,7 @@ pandas
 python-multipart
 requests
 sqlalchemy
-passlib[bcrypt]
+bcrypt
 python-jose[cryptography]
 pydantic
 psycopg2-binary
