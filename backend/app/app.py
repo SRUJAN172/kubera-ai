@@ -1,72 +1,179 @@
-from fastapi import FastAPI, HTTPException
-from pathlib import Path
+from datetime import datetime
+
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from pydantic import BaseModel
+import pandas as pd
+import tempfile
+
+from database import Base, engine, SessionLocal
+from models import User, Transaction
 from analysis import load_transactions, FinancialAnalyzer
 from insights import generate_insights, build_ai_prompt
 from llm_service import generate_explanation
-from functools import lru_cache
-import tempfile
+from auth import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    get_current_user,
+)
 
-app = FastAPI()
+# ------------------ APP SETUP ------------------
 
-# ------------------ CORS ------------------
+app = FastAPI(title="Kubera AI")
+Base.metadata.create_all(bind=engine)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-BASE_DIR = Path(__file__).resolve().parent
-CSV_PATH = BASE_DIR / "sample_transactions.csv"
+
+# ------------------ DB DEPENDENCY ------------------
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
-# ------------------ CACHE ------------------
-@lru_cache(maxsize=1)
-def get_cached_data():
-    df = load_transactions(CSV_PATH)
-    return FinancialAnalyzer(df)
+# ------------------ PER-USER CACHE ------------------
+
+_user_cache: dict[int, FinancialAnalyzer] = {}
 
 
-def get_pipeline_data():
-    analyzer = get_cached_data()
+def get_cached_data(user_id: int) -> FinancialAnalyzer:
+    if user_id not in _user_cache:
+        df = load_transactions(engine, user_id)
+        _user_cache[user_id] = FinancialAnalyzer(df)
+    return _user_cache[user_id]
+
+
+def clear_user_cache(user_id: int):
+    _user_cache.pop(user_id, None)
+
+
+def get_pipeline_data(user_id: int):
+    analyzer = get_cached_data(user_id)
     summary = analyzer.full_analysis()
     insights = generate_insights(summary)
     prompt = build_ai_prompt(summary, insights)
     return analyzer, summary, insights, prompt
 
 
+# ------------------ AUTH SCHEMAS ------------------
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+# ------------------ AUTH ROUTES ------------------
+
+@app.post("/register")
+def register(req: RegisterRequest, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.email == req.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user = User(
+        name=req.name,
+        email=req.email,
+        hashed_password=hash_password(req.password),
+        created_at=str(datetime.utcnow().date()),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    token = create_access_token({"sub": user.email})
+    return {
+        "status": "success",
+        "token": token,
+        "user": {"id": user.id, "name": user.name, "email": user.email},
+    }
+
+
+@app.post("/login")
+def login(req: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == req.email).first()
+
+    if not user or not verify_password(req.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    token = create_access_token({"sub": user.email})
+    return {
+        "status": "success",
+        "token": token,
+        "user": {"id": user.id, "name": user.name, "email": user.email},
+    }
+
+
+@app.get("/me")
+def get_me(current_user: User = Depends(get_current_user)):
+    return {
+        "status": "success",
+        "user": {
+            "id": current_user.id,
+            "name": current_user.name,
+            "email": current_user.email,
+        },
+    }
+
+
 # ------------------ ROUTES ------------------
+
+from sqlalchemy import text
 
 @app.get("/")
 def home():
     return {"message": "Kubera AI backend is running"}
 
+@app.get("/health")
+def health_check(db: Session = Depends(get_db)):
+    try:
+        # Try to execute a simple query to check DB connection
+        db.execute(text("SELECT 1"))
+        return {"status": "success", "database": "connected"}
+    except Exception as e:
+        return {"status": "error", "database": "disconnected", "error": str(e)}
+
 
 @app.get("/analyze")
-def analyze():
+def analyze(current_user: User = Depends(get_current_user)):
     try:
-        _, summary, _, _ = get_pipeline_data()
+        _, summary, _, _ = get_pipeline_data(current_user.id)
         return {"status": "success", "data": summary}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/insights")
-def insights_route():
+def insights_route(current_user: User = Depends(get_current_user)):
     try:
-        _, summary, insights, _ = get_pipeline_data()
+        _, summary, insights, _ = get_pipeline_data(current_user.id)
         return {"status": "success", "summary": summary, "insights": insights}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/prompt")
-def prompt_route():
+def prompt_route(current_user: User = Depends(get_current_user)):
     try:
-        _, summary, insights, prompt = get_pipeline_data()
+        _, summary, insights, prompt = get_pipeline_data(current_user.id)
         return {
             "status": "success",
             "summary": summary,
@@ -78,9 +185,9 @@ def prompt_route():
 
 
 @app.get("/explain")
-def explain_route():
+def explain_route(current_user: User = Depends(get_current_user)):
     try:
-        _, summary, insights, prompt = get_pipeline_data()
+        _, summary, insights, prompt = get_pipeline_data(current_user.id)
         explanation = generate_explanation(prompt)
 
         return {
@@ -96,65 +203,110 @@ def explain_route():
 # ------------------ ASK (AI CHAT) ------------------
 
 @app.post("/ask")
-def ask(data: dict):
+def ask(data: dict, current_user: User = Depends(get_current_user)):
     try:
         query = data.get("query", "")
+
         if not query.strip():
             raise HTTPException(status_code=400, detail="Query is required")
 
         history = data.get("history", [])
 
-        _, summary, insights, _ = get_pipeline_data()
+        _, summary, insights, _ = get_pipeline_data(current_user.id)
 
         history_text = "\n".join(
-            [f"{msg.get('role', 'user')}: {msg.get('content', '')}" for msg in history[-5:]]
+            [
+                f"{msg.get('role', 'user')}: {msg.get('content', '')}"
+                for msg in history[-5:]
+            ]
         )
 
-        prompt = f"""
-You are Kubera AI, a personal finance assistant.
+        explanation_prompt = f"""
+            You are Kubera AI, a personal finance assistant.
 
-Financial Summary:
-- Total Income: ₹{summary['total_income']}
-- Total Expense: ₹{summary['total_expense']}
-- Savings: ₹{summary['savings']}
-- Savings Rate: {summary['savings_rate']}%
-- Expense Ratio: {summary['expense_ratio']}%
-- Financial Health: {summary['financial_health']}
+            Financial Summary:
+            - Total Income: ₹{summary['total_income']}
+            - Total Expense: ₹{summary['total_expense']}
+            - Savings: ₹{summary['savings']}
+            - Savings Rate: {summary['savings_rate']}%
+            - Expense Ratio: {summary['expense_ratio']}%
+            - Financial Health: {summary['financial_health']}
 
-Top Expense Categories:
-{summary['top_3_expense_categories']}
+            Top Expense Categories:
+            {summary['top_3_expense_categories']}
 
-Monthly Trends:
-Income: {summary['monthly_income_trend']}
-Expense: {summary['monthly_expense_trend']}
-Savings: {summary['monthly_savings_trend']}
+            Monthly Trends:
+            Income: {summary['monthly_income_trend']}
+            Expense: {summary['monthly_expense_trend']}
+            Savings: {summary['monthly_savings_trend']}
 
-Insights:
-{insights}
+            Insights:
+            {insights}
 
-Conversation History:
-{history_text}
+            Conversation History:
+            {history_text}
 
-User Question:
-{query}
+            User Question:
+            {query}
 
-Rules:
-- Use the data above
-- Be concise
-- Give actionable advice
-- Do not hallucinate
-"""
+            Rules:
+            - Explain the user's financial situation clearly
+            - Use only the data above
+            - Be concise
+            - Do not hallucinate
+            """
 
-        response = generate_explanation(prompt)
+        advice_prompt = f"""
+            You are Kubera AI, a personal finance advisor.
+
+            Based on the user's financial data, give ONLY actionable advice.
+
+            Financial Summary:
+            - Total Income: ₹{summary['total_income']}
+            - Total Expense: ₹{summary['total_expense']}
+            - Savings: ₹{summary['savings']}
+            - Savings Rate: {summary['savings_rate']}%
+            - Expense Ratio: {summary['expense_ratio']}%
+            - Financial Health: {summary['financial_health']}
+
+            Top Expense Categories:
+            {summary['top_3_expense_categories']}
+
+            Insights:
+            {insights}
+
+            User Question:
+            {query}
+
+            Rules:
+            - Do not repeat the full explanation
+            - Give 3 to 5 practical points
+            - Focus on improving savings and reducing unnecessary expenses
+            - Be concise
+            - Do not hallucinate
+            - Avoid risky investment advice
+
+            Format:
+            - Advice 1
+            - Advice 2
+            - Advice 3
+            """
+
+        explanation = generate_explanation(explanation_prompt)
+        advice = generate_explanation(advice_prompt)
 
         return {
             "status": "success",
             "query": query,
-            "answer": response,
+            "answer": {
+                "explanation": explanation,
+                "advice": advice,
+            },
         }
 
     except HTTPException:
         raise
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -162,9 +314,9 @@ Rules:
 # ------------------ GOALS ------------------
 
 @app.get("/goals")
-def get_goals():
+def get_goals(current_user: User = Depends(get_current_user)):
     try:
-        _, summary, _, _ = get_pipeline_data()
+        _, summary, _, _ = get_pipeline_data(current_user.id)
 
         emergency_target = summary["total_expense"] * 6
 
@@ -196,14 +348,33 @@ def get_goals():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ------------------ TRANSACTIONS ------------------
 
+@app.get("/transactions")
+def get_transactions(current_user: User = Depends(get_current_user)):
+    try:
+        analyzer = get_cached_data(current_user.id)
+        df = analyzer.df.copy()
 
-# ------------------ EXPORT ------------------
+        if "date" in df.columns:
+            df["date"] = df["date"].astype(str)
+
+        records = df.to_dict(orient="records")
+
+        return {
+            "status": "success",
+            "count": len(records),
+            "data": records,
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/transactions/export")
-def export_transactions():
+def export_transactions(current_user: User = Depends(get_current_user)):
     try:
-        analyzer = get_cached_data()
+        analyzer = get_cached_data(current_user.id)
         df = analyzer.df.copy()
 
         if "date" in df.columns:
@@ -221,28 +392,152 @@ def export_transactions():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/transactions")
-def get_transactions():
+
+# ------------------ UPLOAD ------------------
+
+@app.post("/upload")
+async def upload_csv(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     try:
-        analyzer = get_cached_data()
-        df = analyzer.df.copy()
+        if not file.filename.lower().endswith(".csv"):
+            raise HTTPException(status_code=400, detail="Only CSV files allowed")
 
-        if "date" in df.columns:
-            df["date"] = df["date"].astype(str)
+        df = pd.read_csv(file.file)
+        df.columns = df.columns.str.strip().str.lower()
 
-        records = df.to_dict(orient="records")
+        required_cols = {"date", "type", "category", "amount"}
+
+        if not required_cols.issubset(df.columns):
+            missing = required_cols - set(df.columns)
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing columns: {missing}",
+            )
+
+        if "description" not in df.columns:
+            df["description"] = ""
+
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+
+        df["type"] = (
+            df["type"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .str.lower()
+        )
+
+        df["category"] = (
+            df["category"]
+            .fillna("Unknown")
+            .astype(str)
+            .str.strip()
+            .replace("", "Unknown")
+        )
+
+        df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0)
+
+        df["description"] = (
+            df["description"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
+
+        inserted = 0
+        skipped = 0
+        skipped_invalid = 0
+        skipped_duplicate = 0
+
+        for _, row in df.iterrows():
+            if pd.isna(row["date"]) or row["type"] not in ["income", "expense"]:
+                skipped += 1
+                skipped_invalid += 1
+                continue
+
+            date_value = str(row["date"].date())
+            type_value = row["type"]
+            category_value = row["category"]
+            amount_value = float(row["amount"])
+            description_value = row["description"]
+
+            exists = db.query(Transaction).filter(
+                Transaction.user_id == current_user.id,
+                Transaction.date == date_value,
+                Transaction.type == type_value,
+                Transaction.category == category_value,
+                Transaction.amount == amount_value,
+                Transaction.description == description_value,
+            ).first()
+
+            if exists:
+                skipped += 1
+                skipped_duplicate += 1
+                continue
+
+            transaction = Transaction(
+                user_id=current_user.id,
+                date=date_value,
+                type=type_value,
+                category=category_value,
+                amount=amount_value,
+                description=description_value,
+            )
+
+            db.add(transaction)
+            inserted += 1
+
+        db.commit()
+        clear_user_cache(current_user.id)
 
         return {
             "status": "success",
-            "count": len(records),
-            "data": records
+            "message": "CSV uploaded successfully",
+            "total_rows": len(df),
+            "inserted": inserted,
+            "rows": inserted,
+            "skipped": skipped,
+            "skipped_invalid": skipped_invalid,
+            "skipped_duplicate": skipped_duplicate,
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        db.rollback()
+        print("UPLOAD ERROR:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ------------------ DELETE & CACHE ------------------
+
+@app.delete("/delete")
+def delete_all_transactions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        deleted = db.query(Transaction).filter(
+            Transaction.user_id == current_user.id,
+        ).delete()
+        db.commit()
+        clear_user_cache(current_user.id)
+
+        return {
+            "status": "success",
+            "message": "All transactions deleted",
+            "rows_deleted": deleted,
         }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-# ------------------ CACHE REFRESH ------------------
+
 
 @app.post("/refresh")
-def refresh_cache():
-    get_cached_data.cache_clear()
+def refresh_cache(current_user: User = Depends(get_current_user)):
+    clear_user_cache(current_user.id)
     return {"status": "success", "message": "Cache refreshed"}

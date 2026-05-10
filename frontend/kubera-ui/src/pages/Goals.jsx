@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { apiFetch } from "../utils/api";
 
 function Goals() {
   const [goals, setGoals] = useState([]);
@@ -8,7 +9,7 @@ function Goals() {
   useEffect(() => {
     async function fetchGoals() {
       try {
-        const res = await fetch("http://127.0.0.1:8000/goals");
+        const res = await apiFetch("/goals");
 
         if (!res.ok) {
           throw new Error("Failed to fetch goals");
@@ -50,9 +51,7 @@ function Goals() {
                 Goal
               </p>
 
-              <h3 className="text-3xl mb-5 font-semibold">
-                {goal.title}
-              </h3>
+              <h3 className="text-3xl mb-5 font-semibold">{goal.title}</h3>
 
               <div className="h-3 bg-stone-100 rounded-full overflow-hidden mb-4">
                 <div
@@ -65,9 +64,7 @@ function Goals() {
                 <span className="text-2xl font-semibold">
                   {goal.value.toFixed(1)}%
                 </span>
-                <span className="text-stone-500 text-sm">
-                  {goal.amount}
-                </span>
+                <span className="text-stone-500 text-sm">{goal.amount}</span>
               </div>
             </div>
           ))}

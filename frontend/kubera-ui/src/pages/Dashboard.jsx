@@ -5,6 +5,8 @@ import TrendLineChart from "../components/charts/TrendLineChart";
 import SummaryCards from "../components/SummaryCards";
 import FinanceBarChart from "../components/charts/FinanceBarCharts";
 import InsightsPanel from "../components/InsightsPanel";
+import { useAuth } from "../context/AuthContext";
+import { apiFetch } from "../utils/api";
 
 function MetricCard({ title, value, icon: Icon, note }) {
   return (
@@ -22,6 +24,7 @@ function MetricCard({ title, value, icon: Icon, note }) {
 }
 
 function Dashboard() {
+  const { user } = useAuth();
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -29,7 +32,7 @@ function Dashboard() {
   useEffect(() => {
     async function fetchDashboardData() {
       try {
-        const res = await fetch("http://127.0.0.1:8000/analyze");
+        const res = await apiFetch("/analyze");
 
         if (!res.ok) {
           throw new Error("Failed to fetch dashboard data");
@@ -87,11 +90,13 @@ function Dashboard() {
     { name: "Savings", amount: summary.savings || 0 },
   ];
 
+  const firstName = user?.name?.split(" ")[0] || "there";
+
   return (
     <div className="max-w-7xl mx-auto space-y-10">
       <header>
         <h1 className="text-5xl md:text-6xl mb-3 leading-tight font-semibold">
-          Good morning, Srujan.
+          Good morning, {firstName}.
         </h1>
         <p className="text-stone-500 text-lg max-w-2xl">
           Here is your latest financial dashboard from Kubera AI.
@@ -116,8 +121,8 @@ function Dashboard() {
           </div>
 
           <p className="text-sm text-stone-500 mt-4">
-            Highest spending day: {summary.highest_spending_day?.date || "N/A"} (
-            ₹{summary.highest_spending_day?.amount || 0})
+            Highest spending day: {summary.highest_spending_day?.date || "N/A"}{" "}
+            (₹{summary.highest_spending_day?.amount || 0})
           </p>
         </div>
 

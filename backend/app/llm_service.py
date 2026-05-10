@@ -43,3 +43,8 @@ def generate_explanation(prompt: str, model: str = MODEL_NAME) -> str:
         return "Unable to generate explanation."
 
     return text
+
+
+    
+
+     

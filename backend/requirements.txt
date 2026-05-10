@@ -2,5 +2,10 @@ fastapi
 uvicorn
 pandas
 python-multipart
-langchain
-langchain-openai
+requests
+sqlalchemy
+passlib[bcrypt]
+python-jose[cryptography]
+pydantic
+psycopg2-binary
+python-dotenv

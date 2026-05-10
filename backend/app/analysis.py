@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict
 import pandas as pd
+from database import engine 
 
 
 VALID_TYPES = {"income", "expense"}
@@ -260,10 +261,7 @@ class FinancialAnalyzer:
         }
 
 
-def load_transactions(csv_path: str) -> pd.DataFrame:
-    try:
-        return pd.read_csv(csv_path)
-    except FileNotFoundError:
-        raise FileNotFoundError(f"CSV file not found: {csv_path}")
-    except Exception as e:
-        raise Exception(f"Error reading CSV file: {e}")
+def load_transactions(engine, user_id: int) -> pd.DataFrame:
+    query = "SELECT * FROM transactions WHERE user_id = :uid"
+    df = pd.read_sql(query, engine, params={"uid": user_id})
+    return df

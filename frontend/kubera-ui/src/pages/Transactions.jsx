@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Search, Filter, Download } from "lucide-react";
+import { apiFetch } from "../utils/api";
 
 function Transactions() {
   const [transactions, setTransactions] = useState([]);
@@ -10,7 +11,7 @@ function Transactions() {
   useEffect(() => {
     async function fetchTransactions() {
       try {
-        const res = await fetch("http://127.0.0.1:8000/transactions");
+        const res = await apiFetch("/transactions");
 
         if (!res.ok) {
           throw new Error("Failed to fetch transactions");
@@ -30,13 +31,11 @@ function Transactions() {
     fetchTransactions();
   }, []);
 
+  const handleExport = async () => {
+    try {
+      const response = await apiFetch("/transactions/export");
 
-  const handleExport = async() => {
-    try{
-      const response = await fetch("http://127.0.0.1:8000/transactions/export")
-
-      if(!response.ok)
-      {
+      if (!response.ok) {
         throw new Error("Export failed");
       }
 
@@ -47,18 +46,17 @@ function Transactions() {
 
       link.href = url;
       link.download = "Kubera_transaction.csv";
-      
+
       document.body.appendChild(link);
       link.click();
 
       link.remove();
       window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export error:", err);
+      alert("Failed to export");
     }
-      catch(err){
-        console.log("error");
-        alert("Failed to export");
-      }
-    }
+  };
 
   const filteredTransactions = transactions.filter((t) => {
     const text = search.toLowerCase();
@@ -75,14 +73,18 @@ function Transactions() {
   }
 
   if (error) {
-    return <div className="max-w-7xl mx-auto p-8 text-red-600">Error: {error}</div>;
+    return (
+      <div className="max-w-7xl mx-auto p-8 text-red-600">Error: {error}</div>
+    );
   }
 
   return (
     <div className="max-w-7xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6 mb-10">
         <div>
-          <h1 className="text-5xl md:text-6xl mb-3 font-semibold">Transactions</h1>
+          <h1 className="text-5xl md:text-6xl mb-3 font-semibold">
+            Transactions
+          </h1>
           <p className="text-stone-500 text-lg">
             Every movement refined, analyzed, and presented clearly.
           </p>
@@ -90,8 +92,9 @@ function Transactions() {
 
         <div className="flex gap-4">
           <button
-          onClick = {handleExport}
-           className="flex items-center gap-3 px-6 py-4 bg-white border border-stone-200 rounded-2xl shadow-sm font-medium">
+            onClick={handleExport}
+            className="flex items-center gap-3 px-6 py-4 bg-white border border-stone-200 rounded-2xl shadow-sm font-medium"
+          >
             <Download size={18} />
             Export Journal
           </button>
@@ -154,7 +157,9 @@ function Transactions() {
 
                     <td
                       className={`px-8 py-6 text-right text-2xl font-semibold ${
-                        t.type === "income" ? "text-emerald-700" : "text-stone-800"
+                        t.type === "income"
+                          ? "text-emerald-700"
+                          : "text-stone-800"
                       }`}
                     >
                       {t.type === "income" ? "+" : "-"}₹
@@ -164,7 +169,10 @@ function Transactions() {
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5" className="px-8 py-10 text-center text-stone-500">
+                  <td
+                    colSpan="5"
+                    className="px-8 py-10 text-center text-stone-500"
+                  >
                     No transactions found.
                   </td>
                 </tr>

@@ -51,3 +51,9 @@ Thumbs.db
 # Python build
 # ------------------
 *.egg-info/
+
+# ------------------
+# Databases & Media
+# ------------------
+*.db
+*.mp4

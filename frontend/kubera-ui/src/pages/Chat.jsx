@@ -1,9 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Send, Paperclip, Sparkles } from "lucide-react";
 import { suggestions } from "../data/mockData";
+import { apiFetch } from "../utils/api";
 import kubera from "../assets/kubera.png";
-
-const API_BASE = "http://127.0.0.1:8000";
 
 function Chat() {
   const [input, setInput] = useState("");
@@ -11,12 +10,12 @@ function Chat() {
   const [loading, setLoading] = useState(false);
 
   const bottomRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
-  // Better typing animation
   const typeMessage = (text, index) => {
     let i = 0;
     let current = "";
@@ -24,7 +23,7 @@ function Chat() {
     const interval = setInterval(() => {
       current += text[i];
       i++;
-      // ... spread operator in javascript ehich spreads the object
+
       setMessages((prev) => {
         const updated = [...prev];
         updated[index] = {
@@ -36,9 +35,61 @@ function Chat() {
 
       if (i >= text.length) {
         clearInterval(interval);
-        setLoading(false); //  moved here (correct)
+        setLoading(false);
       }
     }, 15);
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || loading) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    setLoading(true);
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: `Uploaded file: ${file.name}`,
+      },
+    ]);
+
+    try {
+      const res = await apiFetch("/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.detail || "Upload failed");
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          content: `CSV uploaded successfully.\n${data.inserted || 0} transactions added.\n${data.skipped || 0} rows skipped.`,
+        },
+      ]);
+    } catch (error) {
+      console.error("Upload Error:", error);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "ai",
+          content: "CSV upload failed. Please check your file format.",
+        },
+      ]);
+    } finally {
+      setLoading(false);
+      e.target.value = "";
+    }
   };
 
   const handleSend = async (customText = "") => {
@@ -58,11 +109,8 @@ function Chat() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/ask`, {
+      const res = await apiFetch("/ask", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           query,
           history: updatedMessages.slice(-6),
@@ -75,20 +123,22 @@ function Chat() {
 
       const data = await res.json();
 
-      const fullText =
-        data.answer || data.response || "No response received";
+      let fullText = "";
 
-      //Insert placeholder FIRST
+      if (data.answer) {
+        const explanation = data.answer.explanation || "";
+        const advice = data.answer.advice || "";
+
+        fullText = `Explanation:\n${explanation}\n\nAdvice:\n${advice}`;
+      } else {
+        fullText = "No response received";
+      }
+
       const aiIndex = updatedMessages.length;
 
-      setMessages((prev) => [
-        ...prev,
-        { role: "ai", content: "" },
-      ]);
+      setMessages((prev) => [...prev, { role: "ai", content: "" }]);
 
-      //  Animate typing
       typeMessage(fullText, aiIndex);
-
     } catch (error) {
       console.error("Error:", error);
 
@@ -106,8 +156,6 @@ function Chat() {
 
   return (
     <div className="max-w-5xl mx-auto min-h-[75vh] flex flex-col items-center justify-center text-center">
-
-      {/* EMPTY STATE */}
       {messages.length === 0 && (
         <>
           <div className="mb-12">
@@ -142,10 +190,8 @@ function Chat() {
         </>
       )}
 
-      {/* CHAT */}
       {messages.length > 0 && (
         <div className="w-full max-w-3xl mb-8 space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-
           {messages.map((msg, index) => (
             <div
               key={index}
@@ -165,7 +211,6 @@ function Chat() {
             </div>
           ))}
 
-          {/* LOADING */}
           {loading && (
             <div className="flex justify-start">
               <div className="max-w-[75%] px-5 py-4 rounded-3xl rounded-bl-md bg-[#F9F8F4] border border-stone-200 text-stone-500 shadow-sm">
@@ -181,11 +226,20 @@ function Chat() {
         </div>
       )}
 
-      {/* INPUT */}
       <div className="w-full max-w-3xl">
         <div className="flex items-center bg-white rounded-[30px] border border-stone-200 shadow-sm px-4 py-4">
+          <Paperclip
+            className="text-stone-400 mr-4 cursor-pointer hover:text-[#1A3C34]"
+            onClick={() => fileInputRef.current.click()}
+          />
 
-          <Paperclip className="text-stone-400 mr-4 cursor-pointer" />
+          <input
+            type="file"
+            accept=".csv"
+            ref={fileInputRef}
+            className="hidden"
+            onChange={handleFileUpload}
+          />
 
           <input
             type="text"

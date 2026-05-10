@@ -6,8 +6,7 @@ import {
   CheckCircle2,
   XCircle,
 } from "lucide-react";
-
-const API_BASE = "http://127.0.0.1:8000";
+import { apiFetch } from "../utils/api";
 
 function getInsightType(text = "") {
   const lower = text.toLowerCase();
@@ -78,7 +77,7 @@ function InsightsPanel() {
         setLoading(true);
         setError("");
 
-        const res = await fetch(`${API_BASE}/insights`);
+        const res = await apiFetch("/insights");
 
         if (!res.ok) {
           throw new Error(`Failed to fetch insights (${res.status})`);
